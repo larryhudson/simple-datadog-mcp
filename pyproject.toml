@@ -1,0 +1,13 @@
+[project]
+name = "simple-datadog-mcp"
+version = "0.1.0"
+description = "Query Datadog logs from URLs via MCP"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "datadog-api-client>=2.46.0",
+    "mcp>=1.23.1",
+]
+
+[project.scripts]
+simple-datadog-mcp = "main:main"
