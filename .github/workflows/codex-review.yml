@@ -1,0 +1,100 @@
+name: Codex PR Review
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+  issue_comment:
+    types: [created]
+
+jobs:
+  codex-review:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request != null &&
+       (contains(github.event.comment.body, '@codex') ||
+        contains(github.event.comment.body, '@Codex') ||
+        contains(github.event.comment.body, '@CODEX')))
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || github.event.pull_request.head.sha }}
+
+      - name: Check for Claude co-authorship
+        if: github.event_name == 'pull_request'
+        id: check
+        run: |
+          COMMITS=$(git log --format=%B origin/${{ github.event.pull_request.base.ref }}..HEAD)
+          if echo "$COMMITS" | grep -qi "Co-Authored-By: Claude"; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js
+        if: github.event_name == 'issue_comment' || steps.check.outputs.found == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Codex CLI
+        if: github.event_name == 'issue_comment' || steps.check.outputs.found == 'true'
+        run: npm install -g @openai/codex@0.101.0
+
+      - name: Write Codex auth
+        if: github.event_name == 'issue_comment' || steps.check.outputs.found == 'true'
+        run: |
+          mkdir -p ~/.codex
+          echo "$CODEX_AUTH_JSON" > ~/.codex/auth.json
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.OPENAI_CODEX_AUTH_JSON }}
+
+      - name: Review PR with Codex
+        if: github.event_name == 'issue_comment' || steps.check.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event_name == 'issue_comment' && github.event.issue.number || github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          COMMENT_BODY: ${{ github.event_name == 'issue_comment' && github.event.comment.body || '' }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "issue_comment" ]; then
+            BASE_REF=$(gh pr view "${PR_NUMBER}" --json baseRefName -q .baseRefName)
+          fi
+
+          # Use codex exec with workspace-write sandbox + network access for gh CLI
+          codex exec \
+            --sandbox workspace-write \
+            -c 'sandbox_workspace_write.network_access=true' \
+            "You are a thorough code reviewer. Review the changes in this PR and post your review to GitHub.
+
+          Invocation context:
+          - Event: ${GITHUB_EVENT_NAME}
+          - Mention comment: ${COMMENT_BODY}
+
+          Steps:
+          1. Run: git diff origin/${BASE_REF}...HEAD
+          2. Review the diff carefully. Focus on bugs, logic errors, security issues, and performance problems. Skip nitpicks and style-only issues.
+          3. Post a PR review with inline comments using the gh CLI. Use this command:
+
+             COMMIT_SHA=\$(gh pr view ${PR_NUMBER} --json headRefOid -q .headRefOid)
+
+             gh api repos/${REPO}/pulls/${PR_NUMBER}/reviews --method POST \
+               -f event=COMMENT \
+               -f body='Review by Codex' \
+               -f 'comments[][path]=<file>' \
+               -f 'comments[][line]=<line_number>' \
+               -f 'comments[][side]=RIGHT' \
+               -f 'comments[][body]=<your comment>'
+
+          If there are no significant issues, post a simple approving comment:
+             gh pr review ${PR_NUMBER} --comment --body 'Codex review: no significant issues found.'
+
+          Only comment on things that actually need changing."
