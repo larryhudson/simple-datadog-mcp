@@ -10,9 +10,12 @@ jobs:
   codex-review:
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.draft == false &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request != null &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.comment.author_association) &&
        (contains(github.event.comment.body, '@codex') ||
         contains(github.event.comment.body, '@Codex') ||
         contains(github.event.comment.body, '@CODEX')))
