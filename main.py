@@ -181,11 +181,9 @@ def query_llm_traces_from_url(url: str, limit: int = 100) -> str:
 
     # Add time range if specified (convert from ms to ISO8601)
     if params["start"]:
-        from_dt = datetime.fromtimestamp(int(params["start"]) / 1000, tz=timezone.utc)
-        filter_params["from"] = from_dt.isoformat()
+        filter_params["from"] = ts_to_datetime(params["start"]).isoformat()
     if params["end"]:
-        to_dt = datetime.fromtimestamp(int(params["end"]) / 1000, tz=timezone.utc)
-        filter_params["to"] = to_dt.isoformat()
+        filter_params["to"] = ts_to_datetime(params["end"]).isoformat()
 
     # Add query filter
     if params["query"] and params["query"] != "*":
@@ -322,11 +320,9 @@ def get_llm_trace_details(url: str) -> str:
     filter_params = {"query": filtered_query}
 
     if params["start"]:
-        from_dt = datetime.fromtimestamp(int(params["start"]) / 1000, tz=timezone.utc)
-        filter_params["from"] = from_dt.isoformat()
+        filter_params["from"] = ts_to_datetime(params["start"]).isoformat()
     if params["end"]:
-        to_dt = datetime.fromtimestamp(int(params["end"]) / 1000, tz=timezone.utc)
-        filter_params["to"] = to_dt.isoformat()
+        filter_params["to"] = ts_to_datetime(params["end"]).isoformat()
 
     payload = {
         "data": {
